@@ -1,0 +1,6 @@
+@RicoBotsOn_HostAddress = http://localhost:5116
+
+GET {{RicoBotsOn_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
