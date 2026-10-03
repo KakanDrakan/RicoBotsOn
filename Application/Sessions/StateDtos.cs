@@ -17,7 +17,8 @@ namespace Application.Sessions
     int ProveMoveCount,
     bool? RoundSucceeded,
     int RoundNumber,
-    List<ScoreInfo> Scores);
+    List<ScoreInfo> Scores,
+    List<PlayerInfo> Players);
     
 
     public record ClaimInfo(string PlayerId, int MoveCount, DateTime ClaimedAtUtc);

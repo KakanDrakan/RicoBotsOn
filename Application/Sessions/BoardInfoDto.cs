@@ -4,9 +4,7 @@
     int Width,
     int Height,
     List<CellWalls> Walls,
-    List<BotState> Bots,
-    List<TargetCell> Targets,
-    ActiveTarget? ActiveTarget);
+    List<TargetCell> Targets);
 
     public record CellWalls(int X, int Y, bool North, bool East, bool South, bool West);
     public record BotState(string Id, int X, int Y);

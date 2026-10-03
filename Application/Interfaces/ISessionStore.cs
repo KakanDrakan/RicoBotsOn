@@ -9,7 +9,7 @@ namespace Application.Interfaces
 {
     public interface ISessionStore
     {
-        GameSession? Get(string sessionCode);
-        void Save(GameSession session);
+        LobbySession? Get(string sessionCode);
+        void Save(LobbySession session);
     }
 }

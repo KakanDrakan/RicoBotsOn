@@ -15,6 +15,38 @@ namespace RicoBotsOn.Controllers
             _sessionService = sessionService;
         }
 
+        [HttpPost]
+        public ActionResult<CreateSessionResponse> CreateSession([FromBody] CreateSessionRequest request)
+        {
+            try 
+            { 
+                var result = _sessionService.CreateSession(request);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("{code}/join")]
+        public ActionResult<JoinResponse> Join(string code, [FromBody] JoinRequest request)
+        {
+            try
+            {
+                var result = _sessionService.Join(code, request);
+                return Ok(result);
+            }
+            catch (SessionNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpPost("{code}/move")]
         public ActionResult<MoveResponse> SubmitMove(string code, [FromBody] MoveRequest request)
         {
@@ -59,14 +91,6 @@ namespace RicoBotsOn.Controllers
             catch (SessionNotFoundException ex)
             {
                 return NotFound(ex.Message);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                return BadRequest(ex.Message);
             }
         }
 

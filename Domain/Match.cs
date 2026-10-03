@@ -1,10 +1,14 @@
 ﻿using RicochetRobots.Domain;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Domain
 {
-    public class GameSession
+    public class Match
     {
-        public string Code { get; }
         public Board Board { get; }
         public List<Bot> Bots { get; }
         public (int X, int Y, string BotId)? ActiveTarget { get; private set; }
@@ -12,7 +16,7 @@ namespace Domain
         public Dictionary<string, int> Scores { get; } = new();
         public Dictionary<string, (int X, int Y)> RoundStartPositions { get; private set; } = new();
 
-        public ClaimWindow ClaimWindow { get; private set; } = new ();
+        public ClaimWindow ClaimWindow { get; private set; } = new();
         public ProvingAttempt? CurrentAttempt { get; private set; }
         public bool? RoundSucceeded { get; private set; }  // null = round still in progress
 
@@ -28,14 +32,16 @@ namespace Domain
             }
         }
 
-        public GameSession(string code, Board board, List<Bot> bots)
+        public Match(Board board, List<Bot> bots)
         {
-            Code = code;
             Board = board;
             Bots = bots;
         }
+
         public void SubmitClaim(string playerId, int moveCount) => ClaimWindow.Submit(playerId, moveCount);
 
+        // Lazy transition: checked on each request rather than on a timer, same
+        // pattern as ClaimWindow.ActiveDeadlineUtc.
         public void EnsureProvingStarted()
         {
             if (Phase != RoundPhase.WaitingForClaims) return;
@@ -91,14 +97,11 @@ namespace Domain
             ResetBotsToRoundStart();
         }
 
-        public void BeginAttempt(int index)
+        private void BeginAttempt(int index)
         {
-            if (index < 0 || index >= ClaimWindow.ClaimsInProvingOrder.Count)
-                throw new ArgumentOutOfRangeException(nameof(index), "Invalid claim index.");
             var claim = ClaimWindow.ClaimsInProvingOrder[index];
-            CurrentAttempt = new ProvingAttempt(claim.PlayerId, claim.MoveCount);
             _currentAttemptIndex = index;
-            
+            CurrentAttempt = new ProvingAttempt(claim.PlayerId, claim.MoveCount);
             ResetBotsToRoundStart();
         }
 
@@ -130,18 +133,8 @@ namespace Domain
             }
         }
 
-        public void StartNextRound(Random random)
-        {
-            if (Phase != RoundPhase.RoundOver)
-                throw new InvalidOperationException("The current round is not over yet.");
-
-            if (RoundSucceeded == false)
-                ResetBotsToRoundStart();
-
-            RoundNumber++;
-            SelectNewTarget(random);
-        }
-
+        // Picks a random cell from the board's target pool and a random bot to send there,
+        // re-rolling if that bot already happens to be sitting on the chosen cell.
         public void SelectNewTarget(Random random)
         {
             if (Board.Targets.Count == 0 || Bots.Count == 0)
@@ -149,13 +142,13 @@ namespace Domain
 
             (int X, int Y) target;
             Bot bot;
-            var maxAttempts = 100;
+            var maxAttempts = Board.Targets.Count * Bots.Count * 10;
             var attempts = 0;
             do
             {
                 if (attempts++ >= maxAttempts)
-                    throw new InvalidOperationException("No valid target/bot combination available");
-                
+                    throw new InvalidOperationException("No valid target/bot combination available, every bot is sitting on every target cell.");
+
                 target = Board.Targets[random.Next(Board.Targets.Count)];
                 bot = Bots[random.Next(Bots.Count)];
             } while (bot.X == target.X && bot.Y == target.Y);
@@ -166,6 +159,18 @@ namespace Domain
             ClaimWindow = new ClaimWindow();
             CurrentAttempt = null;
             RoundSucceeded = null;
+        }
+
+        public void StartNextRound(Random random)
+        {
+            if (Phase != RoundPhase.RoundOver)
+                throw new InvalidOperationException("The current round is not over yet.");
+
+            if (RoundSucceeded == false)
+                ResetBotsToRoundStart();
+
+            RoundNumber++;
+            SelectNewTarget(random);
         }
     }
 }

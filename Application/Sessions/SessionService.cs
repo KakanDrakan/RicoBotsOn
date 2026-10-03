@@ -7,21 +7,58 @@ namespace Application.Sessions
     public class SessionService
     {
         private readonly ISessionStore _sessionStore;
+        private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // no 0/O/1/I
+        private const int CodeLength = 5;
 
         public SessionService(ISessionStore sessionStore)
         {
             _sessionStore = sessionStore;
         }
 
+        public CreateSessionResponse CreateSession(CreateSessionRequest request)
+        {
+            string code;
+            var attempts = 0;
+            do
+            {
+                if (attempts++ >= 20)
+                    throw new InvalidOperationException("Could not generate a unique lobby code.");
+
+                code = new string(Enumerable.Range(0, CodeLength)
+                    .Select(_ => CodeAlphabet[Random.Shared.Next(CodeAlphabet.Length)])
+                    .ToArray());
+            } while (_sessionStore.Get(code) != null);
+
+            var session = new LobbySession(code, MatchFactory.CreateDefault(Random.Shared));
+            session.Join(request.PlayerToken, request.Name);
+            _sessionStore.Save(session);
+
+            return new CreateSessionResponse(code, ToPlayerInfos(session));
+        }
+
+        public JoinResponse Join(string sessionCode, JoinRequest request)
+        {
+            var session = _sessionStore.Get(sessionCode)
+                ?? throw new SessionNotFoundException(sessionCode);
+
+            session.Join(request.PlayerToken, request.Name);
+            _sessionStore.Save(session);
+
+            return new JoinResponse(request.PlayerToken, ToPlayerInfos(session));
+        }
+
+        private static List<PlayerInfo> ToPlayerInfos(LobbySession session) =>
+            session.Players.Select(p => new PlayerInfo(p.Id, p.Name)).ToList();
+
         public MoveResponse SubmitMove(string sessionCode, MoveRequest request)
         {
             var session = _sessionStore.Get(sessionCode)
-                ?? throw new InvalidOperationException($"No session found for code '{sessionCode}'.");
+                ?? throw new SessionNotFoundException(sessionCode);
 
 
             var direction = Enum.Parse<Direction>(request.Direction, ignoreCase: true);
 
-            var (x, y) = session.ApplyProvingMove(request.PlayerId, request.BotId, direction);
+            var (x, y) = session.Match.ApplyProvingMove(request.PlayerId, request.BotId, direction);
 
             _sessionStore.Save(session);
 
@@ -33,64 +70,63 @@ namespace Application.Sessions
             var session = _sessionStore.Get(sessionCode)
                 ?? throw new SessionNotFoundException(sessionCode);
 
-            session.SubmitClaim(request.PlayerId, request.MoveCount);
+            session.Match.SubmitClaim(request.PlayerId, request.MoveCount);
             _sessionStore.Save(session);
 
-            return new ClaimResponse(request.PlayerId, request.MoveCount, ToUnixSeconds(session.ClaimWindow.DeadlineUtc)!.Value);
+            return new ClaimResponse(request.PlayerId, request.MoveCount, ToUnixSeconds(session.Match.ClaimWindow.DeadlineUtc)!.Value);
         }
 
 
         public BoardStateResponse GetBoardState(string sessionCode)
         {
             var session = _sessionStore.Get(sessionCode)
-                ?? throw new InvalidOperationException($"No session found for code '{sessionCode}'.");
+                ?? throw new SessionNotFoundException(sessionCode);
+
+            var board = session.Match.Board;
 
             var walls = new List<CellWalls>();
-            for (int x = 0; x < session.Board.Width; x++)
+            for (int x = 0; x < session.Match.Board.Width; x++)
             {
-                for (int y = 0; y < session.Board.Height; y++)
+                for (int y = 0; y < session.Match.Board.Height; y++)
                 {
                     walls.Add(new CellWalls(
                         x, y,
-                        session.Board.HasWall(x, y, Direction.North),
-                        session.Board.HasWall(x, y, Direction.East),
-                        session.Board.HasWall(x, y, Direction.South),
-                        session.Board.HasWall(x, y, Direction.West)));
+                        session.Match.Board.HasWall(x, y, Direction.North),
+                        session.Match.Board.HasWall(x, y, Direction.East),
+                        session.Match.Board.HasWall(x, y, Direction.South),
+                        session.Match.Board.HasWall(x, y, Direction.West)));
                 }
             }
 
-            var bots = session.Bots.Select(b => new BotState(b.Id, b.X, b.Y)).ToList();
-            var targets = session.Board.Targets.Select(t => new TargetCell(t.X, t.Y)).ToList();
+            var targets = session.Match.Board.Targets.Select(t => new TargetCell(t.X, t.Y)).ToList();
 
-            ActiveTarget? activeTarget = session.ActiveTarget is { } t2
-            ? new ActiveTarget(t2.X, t2.Y, t2.BotId)
-            : null;
-
-            return new BoardStateResponse(session.Board.Width, session.Board.Height, walls, bots, targets, activeTarget);
+            return new BoardStateResponse(session.Match.Board.Width, session.Match.Board.Height, walls, targets);
         }
 
         public SessionStateResponse GetSessionState(string sessionCode)
         {
             var session = _sessionStore.Get(sessionCode)
                 ?? throw new SessionNotFoundException(sessionCode);
+            
+            var match = session.Match;
 
-            session.EnsureProvingStarted();
+            match.EnsureProvingStarted();
             _sessionStore.Save(session);
 
-            var bots = session.Bots.Select(r => new BotState(r.Id, r.X, r.Y)).ToList();
+            var bots = match.Bots.Select(r => new BotState(r.Id, r.X, r.Y)).ToList();
 
-            ActiveTarget? activeTarget = session.ActiveTarget is { } t
-                ? new ActiveTarget(t.X, t.Y, t.BotId)
-                : null;
+            ActiveTarget? activeTarget = match.ActiveTarget is { } t
+            ? new ActiveTarget(t.X, t.Y, t.BotId)
+            : null;
 
-            var claims = session.ClaimWindow.ClaimsInProvingOrder
+            var claims = match.ClaimWindow.ClaimsInProvingOrder
             .Select(c => new ClaimInfo(c.PlayerId, c.MoveCount, c.ClaimedAtUtc))
             .ToList();
 
-            string? currentProverPlayerId = session.CurrentAttempt?.PlayerId;
-            int? currentProverClaimedMoves = session.CurrentAttempt?.ClaimedMoveCount;
+            string? currentProverPlayerId = match.CurrentAttempt?.PlayerId;
+            int? currentProverClaimedMoves = match.CurrentAttempt?.ClaimedMoveCount;
 
-            var scores = session.Scores
+            var scores = match.Scores
             .OrderByDescending(s => s.Value)
             .Select(s => new ScoreInfo(s.Key, s.Value))
             .ToList();
@@ -99,14 +135,15 @@ namespace Application.Sessions
             bots,
             activeTarget,
             claims,
-            ToUnixSeconds(session.ClaimWindow.ActiveDeadlineUtc),
-            session.Phase.ToString(),
+            ToUnixSeconds(match.ClaimWindow.ActiveDeadlineUtc),
+            match.Phase.ToString(),
             currentProverPlayerId,
             currentProverClaimedMoves,
-            session.CurrentAttempt?.MoveCount ?? 0,
-            session.RoundSucceeded,
-            session.RoundNumber,
-            scores);
+            match.CurrentAttempt?.MoveCount ?? 0,
+            match.RoundSucceeded,
+            match.RoundNumber,
+            scores,
+            ToPlayerInfos(session));
         }
 
         public NextRoundResponse StartNextRound(string sessionCode)
@@ -114,10 +151,10 @@ namespace Application.Sessions
             var session = _sessionStore.Get(sessionCode)
                 ?? throw new SessionNotFoundException(sessionCode);
 
-            session.StartNextRound(Random.Shared);
+            session.Match.StartNextRound(Random.Shared);
             _sessionStore.Save(session);
 
-            return new NextRoundResponse(session.RoundNumber);
+            return new NextRoundResponse(session.Match.RoundNumber);
         }
 
         public ResetResponse ResetProvingAttempt(string sessionCode, ResetRequest request)
@@ -125,10 +162,10 @@ namespace Application.Sessions
             var session = _sessionStore.Get(sessionCode)
                 ?? throw new SessionNotFoundException(sessionCode);
 
-            session.ResetCurrentProverAttempt(request.PlayerId);
+            session.Match.ResetCurrentProverAttempt(request.PlayerId);
             _sessionStore.Save(session);
 
-            var bots = session.Bots.Select(b => new BotState(b.Id, b.X, b.Y)).ToList();
+            var bots = session.Match.Bots.Select(b => new BotState(b.Id, b.X, b.Y)).ToList();
             return new ResetResponse(bots);
         }
 

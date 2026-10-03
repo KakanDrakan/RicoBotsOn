@@ -11,12 +11,12 @@ namespace Infrastructure
 {
     public class SessionStore : ISessionStore
     {
-        private readonly ConcurrentDictionary<string, GameSession> _sessions = new();
+        private readonly ConcurrentDictionary<string, LobbySession> _sessions = new(StringComparer.OrdinalIgnoreCase);
 
-        public GameSession? Get(string code) =>
+        public LobbySession? Get(string code) =>
             _sessions.TryGetValue(code, out var session) ? session : null;
 
-        public void Save(GameSession session) =>
+        public void Save(LobbySession session) =>
             _sessions[session.Code] = session;
     }
 }

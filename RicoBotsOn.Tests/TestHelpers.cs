@@ -12,11 +12,11 @@ namespace RicoBotsOn.Tests
     {
         public static Board FiveByFiveNoWalls() => new(5, 5);
 
-        public static void CloseClaimWindow(GameSession session)
+        public static void CloseClaimWindow(Match match)
         {
             typeof(ClaimWindow)
                 .GetProperty(nameof(ClaimWindow.DeadlineUtc))!
-                .SetValue(session.ClaimWindow, DateTime.UtcNow.AddSeconds(-1));
+                .SetValue(match.ClaimWindow, DateTime.UtcNow.AddSeconds(-1));
         }
     }
 }
