@@ -90,9 +90,13 @@ namespace RicoBotsOn.Controllers
                 var boardInfo = _sessionService.GetBoardState(code);
                 return Ok(boardInfo);
             }
-            catch (InvalidOperationException ex)
+            catch (SessionNotFoundException ex)
             {
                 return NotFound(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
             }
 
         }
@@ -108,6 +112,10 @@ namespace RicoBotsOn.Controllers
             catch (SessionNotFoundException ex)
             {
                 return NotFound(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
             }
         }
 
