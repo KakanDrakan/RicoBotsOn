@@ -65,6 +65,23 @@ namespace RicoBotsOn.Controllers
             }
         }
 
+        [HttpPost("{code}/undo")]
+        public ActionResult<MoveResponse> UndoMove(string code, [FromBody] UndoRequest request)
+        {
+            try
+            {
+                return Ok(_sessionService.UndoMove(code, request));
+            }
+            catch (SessionNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpGet("{code}/board")]
         public ActionResult GetBoard(string code)
         {

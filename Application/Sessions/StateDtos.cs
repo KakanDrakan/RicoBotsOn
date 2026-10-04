@@ -18,10 +18,12 @@ namespace Application.Sessions
     bool? RoundSucceeded,
     int RoundNumber,
     List<ScoreInfo> Scores,
-    List<PlayerInfo> Players);
+    List<PlayerInfo> Players,
+    List<MoveInfo> MoveHistory);
     
 
     public record ClaimInfo(string PlayerId, int MoveCount, DateTime ClaimedAtUtc);
     public record ScoreInfo(string PlayerId, int Points);
     public record NextRoundResponse(int RoundNumber);
+    public record MoveInfo(string BotId, int FromX, int FromY, int ToX, int ToY);
 }

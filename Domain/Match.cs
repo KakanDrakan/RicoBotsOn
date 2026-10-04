@@ -15,7 +15,7 @@ namespace Domain
         public int RoundNumber { get; private set; } = 1;
         public Dictionary<string, int> Scores { get; } = new();
         public Dictionary<string, (int X, int Y)> RoundStartPositions { get; private set; } = new();
-
+        public List<MoveRecord> MoveHistory { get; } = new();
         public ClaimWindow ClaimWindow { get; private set; } = new();
         public ProvingAttempt? CurrentAttempt { get; private set; }
         public bool? RoundSucceeded { get; private set; }  // null = round still in progress
@@ -40,8 +40,6 @@ namespace Domain
 
         public void SubmitClaim(string playerId, int moveCount) => ClaimWindow.Submit(playerId, moveCount);
 
-        // Lazy transition: checked on each request rather than on a timer, same
-        // pattern as ClaimWindow.ActiveDeadlineUtc.
         public void EnsureProvingStarted()
         {
             if (Phase != RoundPhase.WaitingForClaims) return;
@@ -64,8 +62,13 @@ namespace Domain
                 ?? throw new InvalidOperationException($"No bot '{botId}' in this session.");
 
             var (x, y) = MoveResolver.Resolve(Board, Bots, bot, direction);
+            if (x == bot.X && y == bot.Y)
+                return (x, y); //invalid move, no change
+
+            var (fromX, fromY) = (bot.X, bot.Y);
             bot.X = x;
             bot.Y = y;
+            MoveHistory.Add(new MoveRecord(bot.Id, fromX, fromY, x, y));
             CurrentAttempt.RegisterMove();
 
             bool reachedTarget = ActiveTarget is { } t && t.BotId == bot.Id && bot.X == t.X && bot.Y == t.Y;
@@ -83,6 +86,30 @@ namespace Domain
             return (x, y);
         }
 
+        public MoveRecord UndoProvingMove(string playerId)
+        {
+            EnsureProvingStarted();
+
+            if (Phase != RoundPhase.Proving)
+                throw new InvalidOperationException("No proving turn is currently active.");
+
+            if (CurrentAttempt!.PlayerId != playerId)
+                throw new InvalidOperationException("It is not your turn to prove.");
+
+            if (MoveHistory.Count == 0)
+                throw new InvalidOperationException("Nothing to undo.");
+
+            var last = MoveHistory[^1];
+            MoveHistory.RemoveAt(MoveHistory.Count - 1);
+
+            var bot = Bots.Single(b => b.Id == last.BotId);
+            bot.X = last.FromX;
+            bot.Y = last.FromY;
+            CurrentAttempt.UndoMove();
+
+            return last;
+        }
+
         public void ResetCurrentProverAttempt(string playerId)
         {
             EnsureProvingStarted();
@@ -94,11 +121,13 @@ namespace Domain
                 throw new InvalidOperationException("It is not your turn to prove.");
 
             CurrentAttempt.ResetMoveCount();
+            MoveHistory.Clear();
             ResetBotsToRoundStart();
         }
 
         private void BeginAttempt(int index)
         {
+            MoveHistory.Clear();
             var claim = ClaimWindow.ClaimsInProvingOrder[index];
             _currentAttemptIndex = index;
             CurrentAttempt = new ProvingAttempt(claim.PlayerId, claim.MoveCount);
@@ -133,8 +162,6 @@ namespace Domain
             }
         }
 
-        // Picks a random cell from the board's target pool and a random bot to send there,
-        // re-rolling if that bot already happens to be sitting on the chosen cell.
         public void SelectNewTarget(Random random)
         {
             if (Board.Targets.Count == 0 || Bots.Count == 0)
@@ -147,7 +174,7 @@ namespace Domain
             do
             {
                 if (attempts++ >= maxAttempts)
-                    throw new InvalidOperationException("No valid target/bot combination available, every bot is sitting on every target cell.");
+                    throw new InvalidOperationException("No valid target/bot combination available");
 
                 target = Board.Targets[random.Next(Board.Targets.Count)];
                 bot = Bots[random.Next(Bots.Count)];
@@ -158,6 +185,7 @@ namespace Domain
             RoundStartPositions = Bots.ToDictionary(b => b.Id, b => (b.X, b.Y));
             ClaimWindow = new ClaimWindow();
             CurrentAttempt = null;
+            MoveHistory.Clear();
             RoundSucceeded = null;
         }
 

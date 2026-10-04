@@ -23,5 +23,6 @@ namespace Domain
 
         public bool Succeeds() => MoveCount <= ClaimedMoveCount;
         public bool HasUsedAllMoves => MoveCount >= ClaimedMoveCount;
+        public void UndoMove() => MoveCount = Math.Max(0, MoveCount - 1);
     }
 }

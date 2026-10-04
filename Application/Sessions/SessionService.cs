@@ -65,6 +65,17 @@ namespace Application.Sessions
             return new MoveResponse(request.BotId, x, y);
         }
 
+        public MoveResponse UndoMove(string sessionCode, UndoRequest request)
+        {
+            var session = _sessionStore.Get(sessionCode)
+                ?? throw new SessionNotFoundException(sessionCode);
+
+            var undone = session.Match.UndoProvingMove(request.PlayerId);
+            _sessionStore.Save(session);
+
+            return new MoveResponse(undone.BotId, undone.FromX, undone.FromY);
+        }
+
         public ClaimResponse SubmitClaim(string sessionCode, ClaimRequest request)
         {
             var session = _sessionStore.Get(sessionCode)
@@ -127,9 +138,13 @@ namespace Application.Sessions
             int? currentProverClaimedMoves = match.CurrentAttempt?.ClaimedMoveCount;
 
             var scores = match.Scores
-            .OrderByDescending(s => s.Value)
-            .Select(s => new ScoreInfo(s.Key, s.Value))
-            .ToList();
+                .OrderByDescending(s => s.Value)
+                .Select(s => new ScoreInfo(s.Key, s.Value))
+                .ToList();
+
+            var moveHistory = match.MoveHistory
+                .Select(m => new MoveInfo(m.BotId, m.FromX, m.FromY, m.ToX, m.ToY))
+                .ToList();
 
             return new SessionStateResponse(
             bots,
@@ -143,7 +158,8 @@ namespace Application.Sessions
             match.RoundSucceeded,
             match.RoundNumber,
             scores,
-            ToPlayerInfos(session));
+            ToPlayerInfos(session),
+            moveHistory);
         }
 
         public NextRoundResponse StartNextRound(string sessionCode)
