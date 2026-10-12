@@ -22,6 +22,9 @@ namespace Domain
 
         private int _currentAttemptIndex;
 
+        public int MinSolutionMoves { get; }
+        private const int MaxQualityChecks = 50;
+
         public RoundPhase Phase
         {
             get
@@ -32,10 +35,11 @@ namespace Domain
             }
         }
 
-        public Match(Board board, List<Bot> bots)
+        public Match(Board board, List<Bot> bots, int minSolutionMoves = 1)
         {
             Board = board;
             Bots = bots;
+            MinSolutionMoves = minSolutionMoves;
         }
 
         public void SubmitClaim(string playerId, int moveCount) => ClaimWindow.Submit(playerId, moveCount);
@@ -167,20 +171,33 @@ namespace Domain
             if (Board.Targets.Count == 0 || Bots.Count == 0)
                 throw new InvalidOperationException("Need at least one target cell and one bot to select a round target.");
 
-            (int X, int Y) target;
-            Bot bot;
+            (int X, int Y, Bot Bot)? chosen = null;
+            (int X, int Y, Bot Bot)? fallback = null;
             var maxAttempts = Board.Targets.Count * Bots.Count * 10;
-            var attempts = 0;
-            do
+
+            var positions = Bots.Select(b => (b.X, b.Y)).ToArray();
+
+            for (int attempts = 0; attempts < maxAttempts; attempts++)
             {
-                if (attempts++ >= maxAttempts)
-                    throw new InvalidOperationException("No valid target/bot combination available");
+                var target = Board.Targets[random.Next(Board.Targets.Count)];
+                var bot = Bots[random.Next(Bots.Count)];
+                if (bot.X == target.X && bot.Y == target.Y) continue;
 
-                target = Board.Targets[random.Next(Board.Targets.Count)];
-                bot = Bots[random.Next(Bots.Count)];
-            } while (bot.X == target.X && bot.Y == target.Y);
+                fallback ??= (target.X, target.Y, bot);
 
-            ActiveTarget = (target.X, target.Y, bot.Id);
+                if (MinSolutionMoves <= 1 || !SolutionSearch.CanReach(Board, positions, Bots.IndexOf(bot), target, MinSolutionMoves - 1))
+                {
+                    chosen = (target.X, target.Y, bot);
+                    break;
+                }
+
+                if (attempts >= MaxQualityChecks) break;  // fail-safe: use fallback
+            }
+
+            var pick = chosen ?? fallback
+                ?? throw new InvalidOperationException("No valid target/bot combination available");
+
+            ActiveTarget = (pick.X, pick.Y, pick.Bot.Id);
 
             RoundStartPositions = Bots.ToDictionary(b => b.Id, b => (b.X, b.Y));
             ClaimWindow = new ClaimWindow();

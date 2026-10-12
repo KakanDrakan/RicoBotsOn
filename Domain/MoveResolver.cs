@@ -4,8 +4,20 @@
     {
         public static (int x, int y) Resolve(Board board, IReadOnlyList<Bot> bots, Bot bot, Direction direction)
         {
-            int x = bot.X;
-            int y = bot.Y;
+            var positions = new (int X, int Y)[bots.Count];
+            var index = -1;
+            for (int i = 0; i < bots.Count; i++)
+            {
+                positions[i] = (bots[i].X, bots[i].Y);
+                if (bots[i].Id == bot.Id) index = i;
+            }
+            return Resolve(board, positions, index, direction);
+        }
+
+        public static (int x, int y) Resolve(Board board, (int X, int Y)[] positions, int botIndex, Direction direction)
+        {
+            int x = positions[botIndex].X;
+            int y = positions[botIndex].Y;
 
             while (true)
             {
@@ -17,7 +29,16 @@
                 if (!board.InBounds(nx, ny))
                     break;
 
-                if (bots.Any(r => r.Id != bot.Id && r.X == nx && r.Y == ny))
+                bool blocked = false;
+                for (int i = 0; i < positions.Length; i++)
+                {
+                    if (i != botIndex && positions[i].X == nx && positions[i].Y == ny)
+                    {
+                        blocked = true;
+                        break;
+                    }
+                }
+                if (blocked)
                     break;
 
                 x = nx;

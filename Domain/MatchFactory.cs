@@ -91,7 +91,7 @@ namespace Domain
                 new Bot("bot5", 9, 9)
             };
 
-            var match = new Match(board, bots);
+            var match = new Match(board, bots, 4);
             match.SelectNewTarget(random);
             return match;
         }
