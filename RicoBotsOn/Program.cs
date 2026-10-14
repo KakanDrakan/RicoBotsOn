@@ -29,9 +29,6 @@ namespace RicoBotsOn
 
             var app = builder.Build();
 
-            var sessionStore = app.Services.GetRequiredService<Application.Interfaces.ISessionStore>();
-            sessionStore.Save(new LobbySession("test", MatchFactory.CreateDefault(new Random())));
-
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {

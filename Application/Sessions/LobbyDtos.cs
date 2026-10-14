@@ -9,6 +9,6 @@ namespace Application.Sessions
     public record PlayerInfo(string Id, string Name);
     public record JoinRequest(string PlayerToken, string Name);
     public record JoinResponse(string PlayerToken, List<PlayerInfo> Players);
-    public record CreateSessionRequest(string PlayerToken, string Name);
+    public record CreateSessionRequest(string PlayerToken, string Name, BoardDefinitionDto Board);
     public record CreateSessionResponse(string Code, List<PlayerInfo> Players);
 }

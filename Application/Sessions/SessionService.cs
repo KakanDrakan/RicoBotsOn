@@ -7,7 +7,7 @@ namespace Application.Sessions
     public class SessionService
     {
         private readonly ISessionStore _sessionStore;
-        private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // no 0/O/1/I
+        private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         private const int CodeLength = 5;
 
         public SessionService(ISessionStore sessionStore)
@@ -17,6 +17,10 @@ namespace Application.Sessions
 
         public CreateSessionResponse CreateSession(CreateSessionRequest request)
         {
+            var definition = BoardDefinitionMapper.ToDomain(request.Board);
+   
+            var match = MatchFactory.FromDefinition(definition, Random.Shared);
+
             string code;
             var attempts = 0;
             do
@@ -29,7 +33,7 @@ namespace Application.Sessions
                     .ToArray());
             } while (_sessionStore.Get(code) != null);
 
-            var session = new LobbySession(code, MatchFactory.CreateDefault(Random.Shared));
+            var session = new LobbySession(code, match);
             session.Join(request.PlayerToken, request.Name);
             _sessionStore.Save(session);
 

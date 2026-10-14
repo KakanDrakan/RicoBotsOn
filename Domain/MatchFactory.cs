@@ -8,7 +8,7 @@ namespace Domain
 {
     public static class MatchFactory
     {
-        public static Match CreateDefault(Random random)
+        public static Match CreateDefault(Random random) //deprecated: use FromDefinition instead
         {
             var board = new Board(16, 16);
 
@@ -95,5 +95,25 @@ namespace Domain
             match.SelectNewTarget(random);
             return match;
         }
+
+        public static Match FromDefinition(BoardDefinition definition, Random random)
+        {
+            BoardValidator.Validate(definition);
+
+            var board = new Board(definition.Width, definition.Height);
+            foreach (var wall in definition.Walls)
+                board.SetWall(wall.X, wall.Y, wall.Side);
+            foreach (var (x, y) in definition.Targets)
+                board.AddTarget(x, y);
+
+            var bots = definition.Bots
+                .Select((b, i) => new Bot($"bot{i + 1}", b.X, b.Y))
+                .ToList();
+
+            var match = new Match(board, bots);
+            match.SelectNewTarget(random);
+            return match;
+        }
     }
+
 }
